@@ -1,6 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
+
+#define TAMANHO_HASH 10
+#define MAX_SUSPEITOS 5
+#define MAX_PISTAS_POR_SUSPEITO 10
 
 // Estrutura para representar um cômodo (nó da árvore de navegação)
 typedef struct Sala {
@@ -19,20 +24,47 @@ typedef struct PistaBST {
     struct PistaBST *direita;
 } PistaBST;
 
+// Estrutura para um nó da tabela hash (lista encadeada)
+typedef struct HashNode {
+    char pista[100];
+    char suspeito[50];
+    struct HashNode *proximo;
+} HashNode;
+
+// Estrutura para a tabela hash
+typedef struct {
+    HashNode *tabela[TAMANHO_HASH];
+    int contagemSuspeitos[MAX_SUSPEITOS];
+    char suspeitos[MAX_SUSPEITOS][50];
+} TabelaHash;
+
 // Protótipos das funções
 Sala* criarSala(char *nome, char *descricao, char *pista, int temPista);
 PistaBST* inserirPista(PistaBST *raiz, char *pista);
 void emOrdem(PistaBST *raiz);
 void liberarArvore(Sala *raiz);
 void liberarBST(PistaBST *raiz);
-void explorarSalas(Sala *raiz, PistaBST **pistasColetadas);
+void inicializarTabelaHash(TabelaHash *hash);
+int funcaoHash(char *chave);
+void inserirNaHash(TabelaHash *hash, char *pista, char *suspeito);
+void relacionarPistasSuspeitos(TabelaHash *hash);
+void mostrarRelacoesPistasSuspeitos(TabelaHash *hash);
+void encontrarSuspeitoPrincipal(TabelaHash *hash);
+void explorarSalas(Sala *raiz, PistaBST **pistasColetadas, TabelaHash *hash);
 
 int main() {
-    printf("=== Detective Quest - Nível Aventureiro ===\n");
-    printf("Exploração da Mansão com Coleta de Pistas\n\n");
+    printf("=== Detective Quest - Nível Mestre ===\n");
+    printf("Sistema Integrado com Tabela Hash de Suspeitos\n\n");
     
     // Árvore BST para armazenar pistas coletadas (inicialmente vazia)
     PistaBST *pistasColetadas = NULL;
+    
+    // Tabela hash para relacionar pistas com suspeitos
+    TabelaHash hash;
+    inicializarTabelaHash(&hash);
+    
+    // Preenche a tabela hash com as relações pista-suspeito
+    relacionarPistasSuspeitos(&hash);
     
     // Construção da árvore binária representando a mansão
     Sala *hallEntrada = criarSala("Hall de Entrada", 
@@ -103,18 +135,26 @@ int main() {
     printf("Você está no Hall de Entrada da mansão. Algo misterioso aconteceu aqui...\n");
     printf("Explore os cômodos para encontrar pistas e desvendar o mistério!\n\n");
     
-    explorarSalas(hallEntrada, &pistasColetadas);
+    explorarSalas(hallEntrada, &pistasColetadas, &hash);
     
     // Exibir todas as pistas coletadas em ordem alfabética
     printf("\n=== RELATÓRIO FINAL DE INVESTIGAÇÃO ===\n");
-    printf("Pistas coletadas (%d no total):\n", 8); // Total de pistas disponíveis
+    printf("Pistas coletadas:\n");
     emOrdem(pistasColetadas);
+    
+    // Mostrar relações entre pistas e suspeitos
+    printf("\n=== RELAÇÕES PISTAS-SUSPEITOS ===\n");
+    mostrarRelacoesPistasSuspeitos(&hash);
+    
+    // Encontrar e mostrar o suspeito principal
+    printf("\n=== CONCLUSÃO DA INVESTIGAÇÃO ===\n");
+    encontrarSuspeitoPrincipal(&hash);
     
     // Liberação de memória
     liberarArvore(hallEntrada);
     liberarBST(pistasColetadas);
     
-    printf("\nInvestigação concluída. As pistas foram organizadas e analisadas!\n");
+    printf("\nInvestigação concluída. O caso está resolvido!\n");
     return 0;
 }
 
@@ -164,8 +204,106 @@ void emOrdem(PistaBST *raiz) {
     }
 }
 
+// Inicializa a tabela hash
+void inicializarTabelaHash(TabelaHash *hash) {
+    for (int i = 0; i < TAMANHO_HASH; i++) {
+        hash->tabela[i] = NULL;
+    }
+    
+    for (int i = 0; i < MAX_SUSPEITOS; i++) {
+        hash->contagemSuspeitos[i] = 0;
+    }
+    
+    // Definindo os suspeitos
+    strcpy(hash->suspeitos[0], "João Silva (Mordomo)");
+    strcpy(hash->suspeitos[1], "Maria Santos (Herdeira)");
+    strcpy(hash->suspeitos[2], "Pedro Costa (Empresário)");
+    strcpy(hash->suspeitos[3], "Ana Oliveira (Cozinheira)");
+    strcpy(hash->suspeitos[4], "Carlos Mendes (Jardineiro)");
+}
+
+// Função hash simples baseada na soma dos caracteres
+int funcaoHash(char *chave) {
+    int soma = 0;
+    for (int i = 0; chave[i] != '\0'; i++) {
+        soma += tolower(chave[i]);
+    }
+    return soma % TAMANHO_HASH;
+}
+
+// Insere uma relação pista-suspeito na tabela hash
+void inserirNaHash(TabelaHash *hash, char *pista, char *suspeito) {
+    int indice = funcaoHash(pista);
+    
+    HashNode *novoNo = (HashNode*)malloc(sizeof(HashNode));
+    strcpy(novoNo->pista, pista);
+    strcpy(novoNo->suspeito, suspeito);
+    novoNo->proximo = NULL;
+    
+    // Inserção no início da lista encadeada
+    if (hash->tabela[indice] == NULL) {
+        hash->tabela[indice] = novoNo;
+    } else {
+        novoNo->proximo = hash->tabela[indice];
+        hash->tabela[indice] = novoNo;
+    }
+    
+    // Atualiza contagem de suspeitos
+    for (int i = 0; i < MAX_SUSPEITOS; i++) {
+        if (strcmp(hash->suspeitos[i], suspeito) == 0) {
+            hash->contagemSuspeitos[i]++;
+            break;
+        }
+    }
+}
+
+// Relaciona pistas com suspeitos (dados do caso)
+void relacionarPistasSuspeitos(TabelaHash *hash) {
+    inserirNaHash(hash, "Porta principal arrombada", "Carlos Mendes (Jardineiro)");
+    inserirNaHash(hash, "Copo com líquido estranho", "Ana Oliveira (Cozinheira)");
+    inserirNaHash(hash, "Livro com páginas arrancadas", "Maria Santos (Herdeira)");
+    inserirNaHash(hash, "Cadeira desencaixada da mesa", "Pedro Costa (Empresário)");
+    inserirNaHash(hash, "Faca desaparecida do bloco", "Ana Oliveira (Cozinheira)");
+    inserirNaHash(hash, "Cofre violado e vazio", "João Silva (Mordomo)");
+    inserirNaHash(hash, "Mala com documentos falsos", "Pedro Costa (Empresário)");
+    inserirNaHash(hash, "Pegadas que levam ao muro", "Carlos Mendes (Jardineiro)");
+    inserirNaHash(hash, "Caixa de ferramentas violada", "Carlos Mendes (Jardineiro)");
+}
+
+// Mostra todas as relações pista-suspeito
+void mostrarRelacoesPistasSuspeitos(TabelaHash *hash) {
+    printf("Relações encontradas:\n");
+    for (int i = 0; i < TAMANHO_HASH; i++) {
+        HashNode *atual = hash->tabela[i];
+        while (atual != NULL) {
+            printf("• %s → %s\n", atual->pista, atual->suspeito);
+            atual = atual->proximo;
+        }
+    }
+}
+
+// Encontra e exibe o suspeito principal baseado nas pistas
+void encontrarSuspeitoPrincipal(TabelaHash *hash) {
+    int maxContagem = 0;
+    int indiceSuspeito = -1;
+    
+    for (int i = 0; i < MAX_SUSPEITOS; i++) {
+        printf("%s: %d pistas relacionadas\n", hash->suspeitos[i], hash->contagemSuspeitos[i]);
+        
+        if (hash->contagemSuspeitos[i] > maxContagem) {
+            maxContagem = hash->contagemSuspeitos[i];
+            indiceSuspeito = i;
+        }
+    }
+    
+    if (indiceSuspeito != -1) {
+        printf("\n🔍 SUSPEITO PRINCIPAL: %s\n", hash->suspeitos[indiceSuspeito]);
+        printf("   Com %d pistas relacionadas ao caso!\n", maxContagem);
+    }
+}
+
 // Função para explorar a mansão e coletar pistas
-void explorarSalas(Sala *raiz, PistaBST **pistasColetadas) {
+void explorarSalas(Sala *raiz, PistaBST **pistasColetadas, TabelaHash *hash) {
     Sala *atual = raiz;
     char opcao;
     
@@ -202,6 +340,7 @@ void explorarSalas(Sala *raiz, PistaBST **pistasColetadas) {
             printf("d - Ir para a direita (%s)\n", atual->direita->nome);
         }
         printf("p - Ver pistas coletadas\n");
+        printf("r - Ver relações pistas-suspeitos\n");
         printf("s - Sair da exploração\n");
         
         printf("\nPara onde deseja ir? ");
@@ -234,12 +373,17 @@ void explorarSalas(Sala *raiz, PistaBST **pistasColetadas) {
                 }
                 break;
                 
+            case 'r':
+                printf("\n=== RELAÇÕES PISTAS-SUSPEITOS ===\n");
+                mostrarRelacoesPistasSuspeitos(hash);
+                break;
+                
             case 's':
                 printf("Saindo da exploração...\n");
                 return;
                 
             default:
-                printf("Opção inválida! Use 'e', 'd', 'p' ou 's'.\n");
+                printf("Opção inválida! Use 'e', 'd', 'p', 'r' ou 's'.\n");
         }
     }
 }
